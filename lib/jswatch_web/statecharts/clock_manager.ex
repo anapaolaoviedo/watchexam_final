@@ -7,7 +7,7 @@ defmodule JswatchWeb.ClockManager do
     time = Time.from_erl!(now)
     alarm = Time.add(time, 10)
     Process.send_after(self(), :working_working, 1000)
-    {:ok, %{ui_pid: ui, time: time, alarm: alarm, st: Working, indiglo_count: 0}}
+    {:ok, %{ui_pid: ui, time: time, alarm: alarm, st: Working, indiglo_count: 0, snooze_timer: nil }}
   end
 
   def handle_info(:update_alarm, state) do
@@ -17,25 +17,25 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | alarm: alarm}}
   end
 
-
-  def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: Working} = state) do
+   def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: :working} = state) do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
-
     if time == alarm do
       IO.puts("ALARM!!!")
       :gproc.send({:p, :l, :ui_event}, :start_alarm)
-
-    GenServer.cast(ui, :set_indiglo)
+      GenServer.cast(ui, :set_indiglo)
       Process.send_after(self(), :toggle_indiglo, 500)
-      new_state = %{state | st: :alarm_on, indiglo_count: 0}
-      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string })
-      {:noreply, new_state |> Map.put(:time, time)}
+      state =
+        state
+        |> Map.put(:st, :alarm_on)
+        |> Map.put(:indiglo_count, 0)
+        |> Map.put(:time, time)
+      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string()})
+      {:noreply, state}
     else
-      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string })
-      {:noreply, state |> Map.put(:time, time)}
+      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string()})
+      {:noreply, %{state | time: time}}
     end
   end
 
-  def handle_info(_event, state), do: {:noreply, state}
 end
