@@ -7,17 +7,11 @@ defmodule JswatchWeb.ClockManager do
     time = Time.from_erl!(now)
     alarm = Time.add(time, 10)
     Process.send_after(self(), :working_working, 1000)
-    {:ok, %{ui_pid: ui, time: time, alarm: alarm, st: Working, indiglo_count: 0, snooze_timer: nil }}
+    {:ok, %{ui_pid: ui,time: time,alarm: alarm,st: :working,indiglo_count: 0,snooze_timer: nil}}
   end
 
-  def handle_info(:update_alarm, state) do
-    {_, now} = :calendar.local_time()
-    time = Time.from_erl!(now)
-    alarm = Time.add(time, 5)
-    {:noreply, %{state | alarm: alarm}}
-  end
-
-   def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: :working} = state) do
+  # Periodic time update - working state
+  def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: :working} = state) do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
     if time == alarm do
@@ -38,8 +32,7 @@ defmodule JswatchWeb.ClockManager do
     end
   end
 
-
-    # ticking even in alarmoff state
+  # Keep ticking even in alarm_off state
   def handle_info(:working_working, %{ui_pid: ui, time: time, st: :alarm_off} = state) do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
@@ -47,12 +40,12 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | time: time}}
   end
 
-
-   def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: :snooze_on} = state) do
+  # Snooze state ticking - IMPORTANT: Check for new alarm time!
+  def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: :snooze_on} = state) do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
 
-    #  if snooze alarm should trigger again
+    # Check if snooze alarm should trigger again
     if time == alarm do
       IO.puts("SNOOZE ALARM TRIGGERED AGAIN!")
       :gproc.send({:p, :l, :ui_event}, :start_alarm)
@@ -67,14 +60,14 @@ defmodule JswatchWeb.ClockManager do
     end
   end
 
+  # Catch-all for working_working in other states
   def handle_info(:working_working, state) do
     Process.send_after(self(), :working_working, 1000)
     {:noreply, state}
   end
 
-
-
-   def handle_info(:toggle_indiglo, %{ui_pid: ui, st: :alarm_on, indiglo_count: count} = state) do
+  # Toggle indiglo flashing
+  def handle_info(:toggle_indiglo, %{ui_pid: ui, st: :alarm_on, indiglo_count: count} = state) do
     if rem(count, 2) == 0 do
       GenServer.cast(ui, :set_indiglo)
     else
@@ -84,17 +77,17 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | indiglo_count: count + 1}}
   end
 
-
+  # Stop indiglo flashing when not in alarm_on state
   def handle_info(:toggle_indiglo, state), do: {:noreply, state}
 
-
+  # Button press triggers snooze timer
   def handle_info(:bottom_right_pressed, %{st: :alarm_on} = state) do
     GenServer.cast(state.ui_pid, :unset_indiglo)
     snooze_timer = Process.send_after(self(), :activate_snooze, 2000)
     {:noreply, %{state | st: :pre_snooze, snooze_timer: snooze_timer}}
   end
 
-
+  # Button released early — cancel snooze and turn alarm off
   def handle_info(:bottom_right_released, %{st: :pre_snooze, snooze_timer: ref} = state)
       when ref != nil do
     Process.cancel_timer(ref)
@@ -102,20 +95,31 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | st: :alarm_off, snooze_timer: nil}}
   end
 
-
+  # Snooze activated after 2s
   def handle_info(:activate_snooze, %{st: :pre_snooze} = state) do
     IO.puts("Snooze activated! Alarm will ring again in 5 seconds.")
-    Process.send(self(), :update_alarm)
+    send(self(), :update_alarm)
     {:noreply, %{state | st: :snooze_on, snooze_timer: nil}}
   end
 
-
+  # If already snoozing and button is pressed again → fully turn off
   def handle_info(:bottom_right_pressed, %{st: :snooze_on} = state) do
     IO.puts("Alarm completely turned off from snooze.")
     {:noreply, %{state | st: :alarm_off}}
   end
 
+  # Update alarm time (for snooze) - use current time from state
+  def handle_info(:update_alarm, %{time: current_time} = state) do
+    alarm = Time.add(current_time, 5)
+    IO.puts("Alarm updated to: #{Time.to_string(alarm)}")
+    {:noreply, %{state | alarm: alarm}}
+  end
 
+  # Catch all UI events (if needed for debugging)
+  def handle_info(event, state) when is_atom(event) do
+    IO.puts("Unhandled UI event: #{event}")
+    {:noreply, state}
+  end
 
-
+  def handle_info(_event, state), do: {:noreply, state}
 end
