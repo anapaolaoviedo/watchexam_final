@@ -7,7 +7,7 @@ defmodule JswatchWeb.ClockManager do
     time = Time.from_erl!(now)
     alarm = Time.add(time, 10)
     Process.send_after(self(), :working_working, 1000)
-    {:ok, %{ui_pid: ui, time: time, alarm: alarm, st: Working}}
+    {:ok, %{ui_pid: ui, time: time, alarm: alarm, st: Working, indiglo_count: 0}}
   end
 
   def handle_info(:update_alarm, state) do
