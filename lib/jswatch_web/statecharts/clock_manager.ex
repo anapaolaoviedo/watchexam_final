@@ -102,4 +102,20 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | st: :alarm_off, snooze_timer: nil}}
   end
 
+
+  def handle_info(:activate_snooze, %{st: :pre_snooze} = state) do
+    IO.puts("Snooze activated! Alarm will ring again in 5 seconds.")
+    Process.send(self(), :update_alarm)
+    {:noreply, %{state | st: :snooze_on, snooze_timer: nil}}
+  end
+
+
+  def handle_info(:bottom_right_pressed, %{st: :snooze_on} = state) do
+    IO.puts("Alarm completely turned off from snooze.")
+    {:noreply, %{state | st: :alarm_off}}
+  end
+
+
+
+
 end
