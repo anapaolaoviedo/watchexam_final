@@ -52,7 +52,7 @@ defmodule JswatchWeb.ClockManager do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
 
-    # Check if snooze alarm should trigger again
+    #  if snooze alarm should trigger again
     if time == alarm do
       IO.puts("SNOOZE ALARM TRIGGERED AGAIN!")
       :gproc.send({:p, :l, :ui_event}, :start_alarm)
@@ -65,6 +65,41 @@ defmodule JswatchWeb.ClockManager do
       GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string()})
       {:noreply, %{state | time: time}}
     end
+  end
+
+  def handle_info(:working_working, state) do
+    Process.send_after(self(), :working_working, 1000)
+    {:noreply, state}
+  end
+
+
+
+   def handle_info(:toggle_indiglo, %{ui_pid: ui, st: :alarm_on, indiglo_count: count} = state) do
+    if rem(count, 2) == 0 do
+      GenServer.cast(ui, :set_indiglo)
+    else
+      GenServer.cast(ui, :unset_indiglo)
+    end
+    Process.send_after(self(), :toggle_indiglo, 500)
+    {:noreply, %{state | indiglo_count: count + 1}}
+  end
+
+
+  def handle_info(:toggle_indiglo, state), do: {:noreply, state}
+
+
+  def handle_info(:bottom_right_pressed, %{st: :alarm_on} = state) do
+    GenServer.cast(state.ui_pid, :unset_indiglo)
+    snooze_timer = Process.send_after(self(), :activate_snooze, 2000)
+    {:noreply, %{state | st: :pre_snooze, snooze_timer: snooze_timer}}
+  end
+
+
+  def handle_info(:bottom_right_released, %{st: :pre_snooze, snooze_timer: ref} = state)
+      when ref != nil do
+    Process.cancel_timer(ref)
+    IO.puts("Button released before 2s. Alarm canceled.")
+    {:noreply, %{state | st: :alarm_off, snooze_timer: nil}}
   end
 
 end
