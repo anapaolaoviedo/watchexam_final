@@ -17,15 +17,24 @@ defmodule JswatchWeb.ClockManager do
     {:noreply, %{state | alarm: alarm}}
   end
 
+
   def handle_info(:working_working, %{ui_pid: ui, time: time, alarm: alarm, st: Working} = state) do
     Process.send_after(self(), :working_working, 1000)
     time = Time.add(time, 1)
+
     if time == alarm do
       IO.puts("ALARM!!!")
       :gproc.send({:p, :l, :ui_event}, :start_alarm)
+
+    GenServer.cast(ui, :set_indiglo)
+      Process.send_after(self(), :toggle_indiglo, 500)
+      new_state = %{state | st: :alarm_on, indiglo_count: 0}
+      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string })
+      {:noreply, new_state |> Map.put(:time, time)}
+    else
+      GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string })
+      {:noreply, state |> Map.put(:time, time)}
     end
-    GenServer.cast(ui, {:set_time_display, Time.truncate(time, :second) |> Time.to_string })
-    {:noreply, state |> Map.put(:time, time) }
   end
 
   def handle_info(_event, state), do: {:noreply, state}
